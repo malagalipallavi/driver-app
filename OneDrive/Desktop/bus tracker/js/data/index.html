@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>KLS GIT Bus Tracker</title>
+
+  <!-- External: map styles -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+  <!-- External: font -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <!-- App styles -->
+  <link rel="stylesheet" href="css/common.css"/>
+  <link rel="stylesheet" href="css/tracker.css"/>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json"/>
+</head>
+<body>
+
+  <!-- ── Top panel ────────────────────────────────────────── -->
+  <div id="topbar">
+    <button id="togglePanelBtn" onclick="toggleTopbar()">▲</button>
+
+    <div class="topbar-brand">
+      <span class="logo">🚌</span>
+      <div>
+        <h1>KLS GIT Bus Tracker</h1>
+        <p>Gogte Institute of Technology</p>
+      </div>
+      <div class="live-pill"><div class="live-dot"></div>LIVE</div>
+    </div>
+
+    <select id="shiftSelect" class="dropdown-style" onchange="onShiftChange()">
+      <option value="">-- Select Shift --</option>
+      <option value="morning730">7:30 AM Morning Pickup</option>
+      <option value="morning900">9:00 AM Morning Pickup</option>
+      <option value="drop130">1:30 PM Afternoon Drop</option>
+      <option value="drop400">4:00 PM Evening Drop</option>
+      <option value="drop515">5:15 PM Evening Drop</option>
+    </select>
+
+    <select id="busSelect" class="dropdown-style" onchange="selectBus()">
+      <option value="">-- Select Shift First --</option>
+    </select>
+
+    <div id="info">Please select a tracking target.</div>
+    <div id="driverInfo"></div>
+  </div>
+
+  <!-- ── Map ──────────────────────────────────────────────── -->
+  <div id="map"></div>
+
+  <!-- ── ETA card ─────────────────────────────────────────── -->
+  <div id="etaCard">
+    <div class="eta-label">ETA TO DESTINATION</div>
+    <div><span class="eta-time" id="etaTime">--</span><span class="eta-unit">min</span></div>
+    <div class="eta-destination" id="etaDestination">Calculating...</div>
+    <div class="eta-dist" id="etaDist">-- km remaining</div>
+  </div>
+
+  <!-- ── External libraries (order matters) ───────────────── -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
+
+  <!-- ── App scripts (data must load before logic) ────────── -->
+  <script src="js/config.js"></script>
+  <script src="js/data/stops.js"></script>
+  <script src="js/data/routes.js"></script>
+  <script src="js/data/shifts.js"></script>
+  <script src="js/data/drivers.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/tracker.js"></script>
+
+  <!-- PWA service worker -->
+  <script>
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+  </script>
+</body>
+</html>
+index.html
