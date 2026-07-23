@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">KLS GIT Driver</string>
+    <string name="title_activity_main">KLS GIT Driver</string>
+    <string name="package_name">com.klsgit.driver</string>
+    <string name="custom_url_scheme">com.klsgit.driver</string>
+</resources>
