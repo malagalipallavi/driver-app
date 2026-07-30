@@ -166,16 +166,18 @@ function startWatching() {
 
       advanceStopProgress(lat, lng);   // FIXED — replaces the old forEach scan
 
-      db.ref('liveLocation/' + selBus).set({
-        lat,
-        lng,
-        heading:   heading   || 0,
-        speed:     speed     || 0,
-        accuracy:  accuracy,
-        trip:      selTrip,
-        stopIndex: routeStopIndex,   // FIXED — this was missing entirely
-        updatedAt: Date.now(),
-      });
+db.ref('liveLocation/' + selBus).set({
+  lat,
+  lng,
+  heading:   heading   || 0,
+  speed:     speed     || 0,
+  accuracy:  accuracy,
+  trip:      selTrip,
+  stopIndex: routeStopIndex,
+  updatedAt: Date.now(),
+}).catch(err => {
+  document.getElementById('gpsVal').innerText = '❌ Firebase write failed: ' + err.message;
+});
     },
     err => {
       document.getElementById('gpsVal').innerText = 'GPS Error: ' + err.message;
@@ -200,7 +202,6 @@ function startTracking() {
   document.getElementById('gpsCount').innerText = '0';
 
   requestWakeLock();
-  db.ref('liveLocation/' + selBus).onDisconnect().remove();
   startWatching();
 }
 
