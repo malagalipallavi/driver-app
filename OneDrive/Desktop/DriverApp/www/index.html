@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GIT Driver Panel</title>
+  <link rel="stylesheet" href="css/style.css"/>
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
+  <script src="js/data/stops.js"></script>
+  <script src="js/data/routes.js"></script>
+  <script src="js/data/shifts.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/driver.js"></script>
+</head>
+<body>
+
+  <div class="header">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:1.5rem">🚌</span>
+      <div>
+        <div class="htitle">GIT Driver Panel</div>
+        <div class="hsub">KLS Gogte Institute of Technology, Belagavi</div>
+      </div>
+    </div>
+    <div class="clock" id="clock">00:00</div>
+  </div>
+
+  <div class="content">
+
+    <div class="card">
+      <div class="card-title">⚙️ YOUR ASSIGNMENT</div>
+      <div class="flabel">Trip / Shift</div>
+      <select id="tripSelect" onchange="onTripChange()">
+        <option value="">— Select your shift —</option>
+        <option value="morning730">Morning Pickup — 7:30 AM</option>
+        <option value="morning900">Morning Pickup — 9:00 AM</option>
+        <option value="drop130">Afternoon Drop — 1:30 PM</option>
+        <option value="drop400">Evening Drop — 4:00 PM</option>
+        <option value="drop515">Evening Drop — 5:15 PM</option>
+      </select>
+      <div class="flabel">Bus Number</div>
+      <select id="busSelect" onchange="onBusChange()">
+        <option value="">— Select shift first —</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="circle-wrap">
+        <div class="big-circle" id="bigCircle" onclick="toggleTracking()">
+          <div class="gdot"></div>
+          <div class="pin">📍</div>
+          <div class="ctext" id="ctext">TAP TO SHARE</div>
+        </div>
+        <div class="badge" id="badge">
+          <div class="bdot" id="bdot"></div>
+          <span id="btext">Location OFF</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="irow">
+      <div class="icard">
+        <div class="ilabel">GPS UPDATES</div>
+        <div class="ivalue" id="gpsCount">0</div>
+      </div>
+      <div class="icard">
+        <div class="ilabel">NEXT STOP</div>
+        <div class="ivalue g" id="nextStop">—</div>
+      </div>
+    </div>
+
+    <div class="gbox">
+      <div class="glabel">CURRENT GPS</div>
+      <div class="gval" id="gpsVal">Not sharing</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🗺️ ROUTE PROGRESS</div>
+      <div id="routeList">
+        <p style="color:#888888;font-size:0.85rem">Select shift and bus to see route</p>
+      </div>
+    </div>
+
+    <div class="sbox">
+      <div class="stitle">🔗 Share this link with students</div>
+      <div class="slink" id="shareLink">Select a bus to generate link</div>
+    </div>
+
+  </div>
+</body>
+</html>
