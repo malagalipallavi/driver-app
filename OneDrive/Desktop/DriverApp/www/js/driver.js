@@ -5,6 +5,7 @@ let selBus     = '';
 let selTrip    = '';
 let gpsBuffer  = [];
 let routeStopIndex = 0;
+let isFirstFix = true;
 
 const STOP_ARRIVAL_RADIUS_KM = 0.3;
 
@@ -41,6 +42,7 @@ function onTripChange() {
 function onBusChange() {
   selBus = document.getElementById('busSelect').value;
   routeStopIndex = 0;
+  isFirstFix = true;
   if (!selBus || !selTrip) return;
   const stops = ROUTE_STOPS[selBus] || [];
   document.getElementById('nextStop').innerText = stops[stops.length - 1] || '—';
@@ -101,10 +103,33 @@ function getDistance(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
+// ── NEW — snaps routeStopIndex to wherever the bus actually is,
+// instead of always assuming the trip starts at stop 0. Fixes the
+// "stuck showing KLS GIT" bug when tracking starts mid-route.
+function snapToNearestStop(lat, lng) {
+  const stops = ROUTE_STOPS[selBus] || [];
+  let nearestIdx = 0;
+  let nearestDist = Infinity;
+  stops.forEach((name, i) => {
+    const coord = STOP_COORDS[name];
+    if (!coord) return;
+    const d = getDistance(lat, lng, coord.lat, coord.lng);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearestIdx = i;
+    }
+  });
+  routeStopIndex = nearestIdx;
+}
+
 function advanceStopProgress(lat, lng) {
   const stops = ROUTE_STOPS[selBus] || [];
   if (!stops.length) return;
-  if (routeStopIndex < stops.length - 1) {
+
+  if (isFirstFix) {
+    snapToNearestStop(lat, lng);
+    isFirstFix = false;
+  } else if (routeStopIndex < stops.length - 1) {
     const coord = STOP_COORDS[stops[routeStopIndex]];
     if (coord && getDistance(lat, lng, coord.lat, coord.lng) < STOP_ARRIVAL_RADIUS_KM) {
       routeStopIndex++;
@@ -177,6 +202,7 @@ function startTracking() {
   gpsBuffer  = [];
   gpsCount   = 0;
   routeStopIndex = 0;
+  isFirstFix = true;
 
   document.getElementById('bigCircle').classList.add('live');
   document.getElementById('ctext').innerText    = 'SHARING LIVE';
