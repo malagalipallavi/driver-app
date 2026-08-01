@@ -40,6 +40,7 @@ function onTripChange() {
 }
 
 function onBusChange() {
+  if (isTracking) stopTracking();   // ADDED — stop old bus before switching
   selBus = document.getElementById('busSelect').value;
   routeStopIndex = 0;
   isFirstFix = true;
@@ -103,9 +104,6 @@ function getDistance(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// ── NEW — snaps routeStopIndex to wherever the bus actually is,
-// instead of always assuming the trip starts at stop 0. Fixes the
-// "stuck showing KLS GIT" bug when tracking starts mid-route.
 function snapToNearestStop(lat, lng) {
   const stops = ROUTE_STOPS[selBus] || [];
   let nearestIdx = 0;
