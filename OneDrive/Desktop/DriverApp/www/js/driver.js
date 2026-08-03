@@ -6,6 +6,7 @@ let selTrip    = '';
 let gpsBuffer  = [];
 let routeStopIndex = 0;
 let isFirstFix = true;
+let currentAccuracy = 999;
 
 const STOP_ARRIVAL_RADIUS_KM = 0.4;
 
@@ -125,12 +126,15 @@ function advanceStopProgress(lat, lng) {
   if (!stops.length) return;
 
   if (isFirstFix) {
+    if (currentAccuracy > 50) {
+      updateStopProgress(routeStopIndex);
+      return; // wait for a better GPS fix before snapping
+    }
     snapToNearestStop(lat, lng);
     isFirstFix = false;
     updateStopProgress(routeStopIndex);
     return;
   }
-
   if (routeStopIndex >= stops.length - 1) {
     updateStopProgress(routeStopIndex);
     return;
@@ -167,6 +171,7 @@ function startWatching() {
   watchId = navigator.geolocation.watchPosition(
     pos => {
       const { latitude: rawLat, longitude: rawLng, heading, speed, accuracy } = pos.coords;
+      currentAccuracy = accuracy;
 
       document.getElementById('gpsVal').innerText = accuracy > 100
         ? '⚠️ GPS: ' + Math.round(accuracy) + 'm — Move outdoors'
