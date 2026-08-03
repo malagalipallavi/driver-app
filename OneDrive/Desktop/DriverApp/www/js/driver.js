@@ -7,7 +7,7 @@ let gpsBuffer  = [];
 let routeStopIndex = 0;
 let isFirstFix = true;
 
-const STOP_ARRIVAL_RADIUS_KM = 0.3;
+const STOP_ARRIVAL_RADIUS_KM = 0.4;
 
 setInterval(() => {
   const n = new Date();
@@ -127,12 +127,30 @@ function advanceStopProgress(lat, lng) {
   if (isFirstFix) {
     snapToNearestStop(lat, lng);
     isFirstFix = false;
-  } else if (routeStopIndex < stops.length - 1) {
-    const coord = STOP_COORDS[stops[routeStopIndex]];
-    if (coord && getDistance(lat, lng, coord.lat, coord.lng) < STOP_ARRIVAL_RADIUS_KM) {
-      routeStopIndex++;
+    updateStopProgress(routeStopIndex);
+    return;
+  }
+
+  if (routeStopIndex >= stops.length - 1) {
+    updateStopProgress(routeStopIndex);
+    return;
+  }
+
+  let matchedIdx = -1;
+  for (let i = stops.length - 1; i >= routeStopIndex; i--) {
+    const coord = STOP_COORDS[stops[i]];
+    if (!coord) continue;
+    const d = getDistance(lat, lng, coord.lat, coord.lng);
+    if (d < STOP_ARRIVAL_RADIUS_KM) {
+      matchedIdx = i;
+      break;
     }
   }
+
+  if (matchedIdx !== -1) {
+    routeStopIndex = Math.min(matchedIdx + 1, stops.length - 1);
+  }
+
   updateStopProgress(routeStopIndex);
 }
 
