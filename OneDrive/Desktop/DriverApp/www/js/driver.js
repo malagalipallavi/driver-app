@@ -1,3 +1,4 @@
+
 let isTracking = false;
 let watchId    = null;
 let gpsCount   = 0;
