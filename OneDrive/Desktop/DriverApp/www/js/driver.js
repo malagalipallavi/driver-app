@@ -184,19 +184,24 @@ function startWatching() {
 
       const { lat, lng } = getSmoothedLocation(rawLat, rawLng);
 
-      advanceStopIndex(lat, lng, accuracy);
-      updateStopProgress(stopIndex);
-      
+    function advanceStopIndex(lat, lng, accuracy) {
+  const stops = ROUTE_STOPS[selBus] || [];
+  if (stops.length === 0) return;
+  if (stopIndex >= stops.length - 1) return;
+  if (accuracy > 100) return; // ignore bad fixes
 
-      const stops = ROUTE_STOPS[selBus] || [];
-      const nextStopName = stops[Math.min(stopIndex + 1, stops.length - 1)] || '—';
-      document.getElementById('nextStop').innerText = nextStopName;
+  const maxCheck = Math.min(stopIndex + MAX_LOOKAHEAD, stops.length - 1);
 
-      const database = getDb();
-      if (!database) {
-        document.getElementById('gpsVal').innerText = '❌ Firebase not ready';
-        return;
-      }
+  for (let i = maxCheck; i >= stopIndex + 1; i--) {
+    const coord = STOP_COORDS[stops[i]];
+    if (!coord) continue;
+    const dist = getDistance(lat, lng, coord.lat, coord.lng);
+    if (dist < STOP_ARRIVAL_RADIUS_KM) {
+      stopIndex = i;
+      return;
+    }
+  }
+}
 
       database.ref('liveLocation/' + selBus).set({
         lat, lng,
