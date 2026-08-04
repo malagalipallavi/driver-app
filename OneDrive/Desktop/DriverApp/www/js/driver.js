@@ -121,7 +121,7 @@ function advanceStopIndex(lat, lng, accuracy) {
   if (stopIndex >= stops.length - 1) return;
 
   // Ignore low-quality GPS fixes entirely — they can't be used to judge arrival
-  if (accuracy > 50) {
+  if (accuracy > 100) {
     confirmCount = 0;
     pendingIdx = -1;
     return;
@@ -184,8 +184,9 @@ function startWatching() {
 
       const { lat, lng } = getSmoothedLocation(rawLat, rawLng);
 
-      advanceStopIndex(lat, lng);
+      advanceStopIndex(lat, lng, accuracy);
       updateStopProgress(stopIndex);
+      
 
       const stops = ROUTE_STOPS[selBus] || [];
       const nextStopName = stops[Math.min(stopIndex + 1, stops.length - 1)] || '—';
