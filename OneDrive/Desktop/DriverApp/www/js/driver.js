@@ -1,7 +1,3 @@
-/* ============================================================
-   driver.js — Driver panel logic
-   ============================================================ */
-
 let isTracking = false;
 let watchId    = null;
 let gpsCount   = 0;
@@ -11,7 +7,7 @@ let gpsBuffer  = [];
 let stopIndex  = 0;
 
 const STOP_ARRIVAL_RADIUS_KM = 0.5;
-const MAX_LOOKAHEAD = 4; // can catch up up to 4 stops ahead if GPS misses one — still strictly sequential, never jumps backward or skips the whole route
+const MAX_LOOKAHEAD = 4;
 
 setInterval(() => {
   const n = new Date();
@@ -49,7 +45,8 @@ function onBusChange() {
   stopIndex = 0;
   if (!selBus || !selTrip) return;
   const stops = ROUTE_STOPS[selBus] || [];
-  document.getElementById('nextStop').innerText = stops[stops.length - 1] || '—';
+  // Show the FIRST real stop as next, not the last — this was the bug
+  document.getElementById('nextStop').innerText = stops[1] || '—';
   document.getElementById('routeList').innerHTML = stops.map((name, i) => `
     <div class="rstop" id="stop-${i}">
       <div class="sdot ${i === 0 ? 'cur' : ''}"></div>
@@ -107,56 +104,22 @@ function getDistance(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// ── Sequential, routes.js order only. Checks a few stops ahead (not
-// just the immediate next one) so ONE bad GPS radius miss can never
-// permanently freeze the route — but it still only ever moves forward,
-// in the exact order routes.js defines, never jumping backward or
-// picking a "nearest" stop out of sequence. ──
-let confirmCount = 0;
-let pendingIdx   = -1;
-
 function advanceStopIndex(lat, lng, accuracy) {
   const stops = ROUTE_STOPS[selBus] || [];
   if (stops.length === 0) return;
   if (stopIndex >= stops.length - 1) return;
-
-  // Ignore low-quality GPS fixes entirely — they can't be used to judge arrival
-  if (accuracy > 100) {
-    confirmCount = 0;
-    pendingIdx = -1;
-    return;
-  }
+  if (accuracy > 100) return;
 
   const maxCheck = Math.min(stopIndex + MAX_LOOKAHEAD, stops.length - 1);
-  let matchedIdx = -1;
 
   for (let i = maxCheck; i >= stopIndex + 1; i--) {
     const coord = STOP_COORDS[stops[i]];
     if (!coord) continue;
     const dist = getDistance(lat, lng, coord.lat, coord.lng);
     if (dist < STOP_ARRIVAL_RADIUS_KM) {
-      matchedIdx = i;
-      break;
+      stopIndex = i;
+      return;
     }
-  }
-
-  if (matchedIdx === -1) {
-    confirmCount = 0;
-    pendingIdx = -1;
-    return;
-  }
-
-  if (matchedIdx === pendingIdx) {
-    confirmCount++;
-  } else {
-    pendingIdx = matchedIdx;
-    confirmCount = 1;
-  }
-
-  if (confirmCount >= 2) {
-    stopIndex = matchedIdx;
-    confirmCount = 0;
-    pendingIdx = -1;
   }
 }
 
@@ -184,24 +147,19 @@ function startWatching() {
 
       const { lat, lng } = getSmoothedLocation(rawLat, rawLng);
 
-    function advanceStopIndex(lat, lng, accuracy) {
-  const stops = ROUTE_STOPS[selBus] || [];
-  if (stops.length === 0) return;
-  if (stopIndex >= stops.length - 1) return;
-  if (accuracy > 100) return; // ignore bad fixes
+      advanceStopIndex(lat, lng, accuracy);
+      updateStopProgress(stopIndex);
 
-  const maxCheck = Math.min(stopIndex + MAX_LOOKAHEAD, stops.length - 1);
+      // THE MISSING LINE — this is what was never updating before
+      const stops = ROUTE_STOPS[selBus] || [];
+      const nextStopName = stops[Math.min(stopIndex + 1, stops.length - 1)] || '—';
+      document.getElementById('nextStop').innerText = nextStopName;
 
-  for (let i = maxCheck; i >= stopIndex + 1; i--) {
-    const coord = STOP_COORDS[stops[i]];
-    if (!coord) continue;
-    const dist = getDistance(lat, lng, coord.lat, coord.lng);
-    if (dist < STOP_ARRIVAL_RADIUS_KM) {
-      stopIndex = i;
-      return;
-    }
-  }
-}
+      const database = getDb();
+      if (!database) {
+        document.getElementById('gpsVal').innerText = '❌ Firebase not ready';
+        return;
+      }
 
       database.ref('liveLocation/' + selBus).set({
         lat, lng,
