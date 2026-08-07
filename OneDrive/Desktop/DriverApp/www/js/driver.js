@@ -7,7 +7,6 @@ let gpsBuffer  = [];
 let stopIndex  = 0;
 
 const STOP_ARRIVAL_RADIUS_KM = 0.5;
-const MAX_LOOKAHEAD = 4;
 
 setInterval(() => {
   const n = new Date();
