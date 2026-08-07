@@ -4,9 +4,10 @@ let gpsCount   = 0;
 let selBus     = '';
 let selTrip    = '';
 let gpsBuffer  = [];
-let stopIndex  = 0;
+let routeStopIndex = 0;
+let isFirstFix = true;
 
-const STOP_ARRIVAL_RADIUS_KM = 0.5;
+const STOP_ARRIVAL_RADIUS_KM = 0.3;
 
 setInterval(() => {
   const n = new Date();
@@ -39,13 +40,12 @@ function onTripChange() {
 }
 
 function onBusChange() {
-  if (isTracking) stopTracking();
   selBus = document.getElementById('busSelect').value;
-  stopIndex = 0;
+  routeStopIndex = 0;
+  isFirstFix = true;
   if (!selBus || !selTrip) return;
   const stops = ROUTE_STOPS[selBus] || [];
-  // Show the FIRST real stop as next, not the last — this was the bug
-  document.getElementById('nextStop').innerText = stops[1] || '—';
+  document.getElementById('nextStop').innerText = stops[stops.length - 1] || '—';
   document.getElementById('routeList').innerHTML = stops.map((name, i) => `
     <div class="rstop" id="stop-${i}">
       <div class="sdot ${i === 0 ? 'cur' : ''}"></div>
@@ -102,32 +102,44 @@ function getDistance(lat1, lng1, lat2, lng2) {
                Math.sin(dLng/2)**2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
-function advanceStopIndex(lat, lng, accuracy) {
+
+// ── snaps routeStopIndex to wherever the bus actually is,
+// instead of always assuming the trip starts at stop 0. Fixes the
+// "stuck showing KLS GIT" bug when tracking starts mid-route.
+function snapToNearestStop(lat, lng) {
   const stops = ROUTE_STOPS[selBus] || [];
-  if (stops.length === 0) return;
-  if (stopIndex >= stops.length - 1) return;
-  if (accuracy > 100) return;
+  let nearestIdx = 0;
+  let nearestDist = Infinity;
+  stops.forEach((name, i) => {
+    const coord = STOP_COORDS[name];
+    if (!coord) return;
+    const d = getDistance(lat, lng, coord.lat, coord.lng);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearestIdx = i;
+    }
+  });
+  routeStopIndex = nearestIdx;
+}
 
-  const targetCoord = STOP_COORDS[stops[stopIndex + 1]];
-  if (!targetCoord) return;
+// ── FIXED — was checking stops[routeStopIndex] (current stop) instead
+// of stops[routeStopIndex + 1] (the actual next target). That off-by-one
+// caused the wrong stop to be marked "Here" and let ETA skip ahead of
+// where the bus really was. ──
+function advanceStopProgress(lat, lng) {
+  const stops = ROUTE_STOPS[selBus] || [];
+  if (!stops.length) return;
 
-  const dist = getDistance(lat, lng, targetCoord.lat, targetCoord.lng);
-  if (dist < STOP_ARRIVAL_RADIUS_KM) {
-    stopIndex++;
-  }
-
-
-  const maxCheck = Math.min(stopIndex + MAX_LOOKAHEAD, stops.length - 1);
-
-  for (let i = maxCheck; i >= stopIndex + 1; i--) {
-    const coord = STOP_COORDS[stops[i]];
-    if (!coord) continue;
-    const dist = getDistance(lat, lng, coord.lat, coord.lng);
-    if (dist < STOP_ARRIVAL_RADIUS_KM) {
-      stopIndex = i;
-      return;
+  if (isFirstFix) {
+    snapToNearestStop(lat, lng);
+    isFirstFix = false;
+  } else if (routeStopIndex < stops.length - 1) {
+    const coord = STOP_COORDS[stops[routeStopIndex + 1]];
+    if (coord && getDistance(lat, lng, coord.lat, coord.lng) < STOP_ARRIVAL_RADIUS_KM) {
+      routeStopIndex++;
     }
   }
+  updateStopProgress(routeStopIndex);
 }
 
 function getDb() {
@@ -153,14 +165,7 @@ function startWatching() {
       document.getElementById('gpsCount').innerText = gpsCount;
 
       const { lat, lng } = getSmoothedLocation(rawLat, rawLng);
-
-      advanceStopIndex(lat, lng, accuracy);
-      updateStopProgress(stopIndex);
-
-      // THE MISSING LINE — this is what was never updating before
-      const stops = ROUTE_STOPS[selBus] || [];
-      const nextStopName = stops[Math.min(stopIndex + 1, stops.length - 1)] || '—';
-      document.getElementById('nextStop').innerText = nextStopName;
+      advanceStopProgress(lat, lng);
 
       const database = getDb();
       if (!database) {
@@ -174,8 +179,18 @@ function startWatching() {
         speed:     speed    || 0,
         accuracy,
         trip:      selTrip,
-        stopIndex: stopIndex,
+        stopIndex: routeStopIndex,
         updatedAt: Date.now(),
+      }).then(() => {
+        const current = document.getElementById('gpsVal').innerText;
+        if (!current.includes('❌')) {
+          document.getElementById('gpsVal').innerText =
+            '✅ ' + Math.round(accuracy) + 'm — ' +
+            rawLat.toFixed(5) + ', ' + rawLng.toFixed(5) + ' 🔥';
+        }
+      }).catch(err => {
+        document.getElementById('gpsVal').innerText =
+          '❌ Firebase error: ' + err.message;
       });
     },
     err => {
@@ -190,7 +205,8 @@ function startTracking() {
   isTracking = true;
   gpsBuffer  = [];
   gpsCount   = 0;
-  stopIndex  = 0;
+  routeStopIndex = 0;
+  isFirstFix = true;
 
   document.getElementById('bigCircle').classList.add('live');
   document.getElementById('ctext').innerText    = 'SHARING LIVE';
