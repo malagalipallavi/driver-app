@@ -5,6 +5,7 @@ let selBus     = '';
 let selTrip    = '';
 let gpsBuffer  = [];
 let stopIndex  = 0;
+let confirmCount = 0;
 
 const STOP_ARRIVAL_RADIUS_KM = 0.5;
 
@@ -101,22 +102,27 @@ function getDistance(lat1, lng1, lat2, lng2) {
                Math.sin(dLng/2)**2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
-
 function advanceStopIndex(lat, lng, accuracy) {
   const stops = ROUTE_STOPS[selBus] || [];
   if (stops.length === 0) return;
-  if (stopIndex >= stops.length - 1) return;
   if (accuracy > 100) return;
+  if (stopIndex >= stops.length - 1) return;
 
   const targetCoord = STOP_COORDS[stops[stopIndex + 1]];
   if (!targetCoord) return;
 
   const dist = getDistance(lat, lng, targetCoord.lat, targetCoord.lng);
+
   if (dist < STOP_ARRIVAL_RADIUS_KM) {
-    stopIndex++;
+    confirmCount++;
+    if (confirmCount >= 2) {
+      stopIndex++;
+      confirmCount = 0;
+    }
+  } else {
+    confirmCount = 0;
   }
 }
-
 function getDb() {
   if (typeof db !== 'undefined') return db;
   try { return firebase.database(); } catch(e) { return null; }
