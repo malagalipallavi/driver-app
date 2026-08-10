@@ -4,10 +4,9 @@ let gpsCount   = 0;
 let selBus     = '';
 let selTrip    = '';
 let gpsBuffer  = [];
-let routeStopIndex = 0;
-let isFirstFix = true;
+let stopIndex  = 0;
 
-const STOP_ARRIVAL_RADIUS_KM = 0.3;
+const STOP_ARRIVAL_RADIUS_KM = 0.5;
 
 setInterval(() => {
   const n = new Date();
@@ -40,12 +39,12 @@ function onTripChange() {
 }
 
 function onBusChange() {
+  if (isTracking) stopTracking();
   selBus = document.getElementById('busSelect').value;
-  routeStopIndex = 0;
-  isFirstFix = true;
+  stopIndex = 0;
   if (!selBus || !selTrip) return;
   const stops = ROUTE_STOPS[selBus] || [];
-  document.getElementById('nextStop').innerText = stops[stops.length - 1] || '—';
+  document.getElementById('nextStop').innerText = stops[1] || '—';
   document.getElementById('routeList').innerHTML = stops.map((name, i) => `
     <div class="rstop" id="stop-${i}">
       <div class="sdot ${i === 0 ? 'cur' : ''}"></div>
@@ -103,43 +102,19 @@ function getDistance(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// ── snaps routeStopIndex to wherever the bus actually is,
-// instead of always assuming the trip starts at stop 0. Fixes the
-// "stuck showing KLS GIT" bug when tracking starts mid-route.
-function snapToNearestStop(lat, lng) {
+function advanceStopIndex(lat, lng, accuracy) {
   const stops = ROUTE_STOPS[selBus] || [];
-  let nearestIdx = 0;
-  let nearestDist = Infinity;
-  stops.forEach((name, i) => {
-    const coord = STOP_COORDS[name];
-    if (!coord) return;
-    const d = getDistance(lat, lng, coord.lat, coord.lng);
-    if (d < nearestDist) {
-      nearestDist = d;
-      nearestIdx = i;
-    }
-  });
-  routeStopIndex = nearestIdx;
-}
+  if (stops.length === 0) return;
+  if (stopIndex >= stops.length - 1) return;
+  if (accuracy > 100) return;
 
-// ── FIXED — was checking stops[routeStopIndex] (current stop) instead
-// of stops[routeStopIndex + 1] (the actual next target). That off-by-one
-// caused the wrong stop to be marked "Here" and let ETA skip ahead of
-// where the bus really was. ──
-function advanceStopProgress(lat, lng) {
-  const stops = ROUTE_STOPS[selBus] || [];
-  if (!stops.length) return;
+  const targetCoord = STOP_COORDS[stops[stopIndex + 1]];
+  if (!targetCoord) return;
 
-  if (isFirstFix) {
-    snapToNearestStop(lat, lng);
-    isFirstFix = false;
-  } else if (routeStopIndex < stops.length - 1) {
-    const coord = STOP_COORDS[stops[routeStopIndex + 1]];
-    if (coord && getDistance(lat, lng, coord.lat, coord.lng) < STOP_ARRIVAL_RADIUS_KM) {
-      routeStopIndex++;
-    }
+  const dist = getDistance(lat, lng, targetCoord.lat, targetCoord.lng);
+  if (dist < STOP_ARRIVAL_RADIUS_KM) {
+    stopIndex++;
   }
-  updateStopProgress(routeStopIndex);
 }
 
 function getDb() {
@@ -165,7 +140,13 @@ function startWatching() {
       document.getElementById('gpsCount').innerText = gpsCount;
 
       const { lat, lng } = getSmoothedLocation(rawLat, rawLng);
-      advanceStopProgress(lat, lng);
+
+      advanceStopIndex(lat, lng, accuracy);
+      updateStopProgress(stopIndex);
+
+      const stops = ROUTE_STOPS[selBus] || [];
+      const nextStopName = stops[Math.min(stopIndex + 1, stops.length - 1)] || '—';
+      document.getElementById('nextStop').innerText = nextStopName;
 
       const database = getDb();
       if (!database) {
@@ -179,18 +160,8 @@ function startWatching() {
         speed:     speed    || 0,
         accuracy,
         trip:      selTrip,
-        stopIndex: routeStopIndex,
+        stopIndex: stopIndex,
         updatedAt: Date.now(),
-      }).then(() => {
-        const current = document.getElementById('gpsVal').innerText;
-        if (!current.includes('❌')) {
-          document.getElementById('gpsVal').innerText =
-            '✅ ' + Math.round(accuracy) + 'm — ' +
-            rawLat.toFixed(5) + ', ' + rawLng.toFixed(5) + ' 🔥';
-        }
-      }).catch(err => {
-        document.getElementById('gpsVal').innerText =
-          '❌ Firebase error: ' + err.message;
       });
     },
     err => {
@@ -205,8 +176,7 @@ function startTracking() {
   isTracking = true;
   gpsBuffer  = [];
   gpsCount   = 0;
-  routeStopIndex = 0;
-  isFirstFix = true;
+  stopIndex  = 0;
 
   document.getElementById('bigCircle').classList.add('live');
   document.getElementById('ctext').innerText    = 'SHARING LIVE';
