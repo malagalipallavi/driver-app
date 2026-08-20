@@ -7,7 +7,7 @@ let gpsBuffer  = [];
 let stopIndex  = 0;
 let confirmCount = 0;
 
-const STOP_ARRIVAL_RADIUS_KM = 0.5;
+const STOP_ARRIVAL_RADIUS_KM = 0.15;
 
 setInterval(() => {
   const n = new Date();
@@ -105,7 +105,7 @@ function getDistance(lat1, lng1, lat2, lng2) {
 function advanceStopIndex(lat, lng, accuracy) {
   const stops = ROUTE_STOPS[selBus] || [];
   if (stops.length === 0) return;
-  if (accuracy > 100) return;
+  if (accuracy > 50) return;
   if (stopIndex >= stops.length - 1) return;
 
   const targetCoord = STOP_COORDS[stops[stopIndex + 1]];
