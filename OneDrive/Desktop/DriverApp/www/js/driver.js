@@ -4,10 +4,7 @@ let gpsCount   = 0;
 let selBus     = '';
 let selTrip    = '';
 let gpsBuffer  = [];
-let stopIndex  = 0;
-let confirmCount = 0;
-
-const STOP_ARRIVAL_RADIUS_KM = 0.15;
+let routeStopIndex = 0;
 
 setInterval(() => {
   const n = new Date();
@@ -40,12 +37,11 @@ function onTripChange() {
 }
 
 function onBusChange() {
-  if (isTracking) stopTracking();
   selBus = document.getElementById('busSelect').value;
-  stopIndex = 0;
+  routeStopIndex = 0;
   if (!selBus || !selTrip) return;
   const stops = ROUTE_STOPS[selBus] || [];
-  document.getElementById('nextStop').innerText = stops[1] || '—';
+  document.getElementById('nextStop').innerText = stops[stops.length - 1] || '—';
   document.getElementById('routeList').innerHTML = stops.map((name, i) => `
     <div class="rstop" id="stop-${i}">
       <div class="sdot ${i === 0 ? 'cur' : ''}"></div>
@@ -54,7 +50,7 @@ function onBusChange() {
     </div>
   `).join('');
   document.getElementById('shareLink').innerText =
-    `${window.location.origin}/index.html?bus=${selBus}`;
+    `college-bus-tracker-alpha.vercel.app/index.html?bus=${selBus}`;
 }
 
 function toggleTracking() {
@@ -102,31 +98,35 @@ function getDistance(lat1, lng1, lat2, lng2) {
                Math.sin(dLng/2)**2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
-function advanceStopIndex(lat, lng, accuracy) {
+
+function computeStopIndex(lat, lng) {
   const stops = ROUTE_STOPS[selBus] || [];
-  if (stops.length === 0) return;
-  if (accuracy > 50) return;
-  if (stopIndex >= stops.length - 1) return;
+  if (!stops.length) return routeStopIndex;
 
-  const targetCoord = STOP_COORDS[stops[stopIndex + 1]];
-  if (!targetCoord) return;
+  // Find nearest stop from current position
+  let nearestIdx  = routeStopIndex;
+  let nearestDist = Infinity;
 
-  const dist = getDistance(lat, lng, targetCoord.lat, targetCoord.lng);
-
-  if (dist < STOP_ARRIVAL_RADIUS_KM) {
-    confirmCount++;
-    if (confirmCount >= 2) {
-      stopIndex++;
-      confirmCount = 0;
+  // Only look forward from current index — never go back
+  for (let i = routeStopIndex; i < stops.length; i++) {
+    const coord = STOP_COORDS[stops[i]];
+    if (!coord) continue;
+    const d = getDistance(lat, lng, coord.lat, coord.lng);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearestIdx  = i;
     }
-  } else {
-    confirmCount = 0;
   }
+
+  return nearestIdx;
 }
+
 function getDb() {
   if (typeof db !== 'undefined') return db;
   try { return firebase.database(); } catch(e) { return null; }
 }
+
+let isFirstFix = true;
 
 function startWatching() {
   if (watchId) {
@@ -147,12 +147,27 @@ function startWatching() {
 
       const { lat, lng } = getSmoothedLocation(rawLat, rawLng);
 
-      advanceStopIndex(lat, lng, accuracy);
-      updateStopProgress(stopIndex);
-
-      const stops = ROUTE_STOPS[selBus] || [];
-      const nextStopName = stops[Math.min(stopIndex + 1, stops.length - 1)] || '—';
-      document.getElementById('nextStop').innerText = nextStopName;
+      if (isFirstFix) {
+        isFirstFix = false;
+        // On first fix scan ALL stops to find nearest
+        const stops = ROUTE_STOPS[selBus] || [];
+        let nearestIdx = 0, nearestDist = Infinity;
+        stops.forEach((name, i) => {
+          const coord = STOP_COORDS[name];
+          if (!coord) return;
+          const d = getDistance(lat, lng, coord.lat, coord.lng);
+          if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
+        });
+        routeStopIndex = nearestIdx;
+        updateStopProgress(routeStopIndex);
+      } else {
+        // After first fix — only look forward
+        const newIndex = computeStopIndex(lat, lng);
+        if (newIndex > routeStopIndex) {
+          routeStopIndex = newIndex;
+        }
+        updateStopProgress(routeStopIndex);
+      }
 
       const database = getDb();
       if (!database) {
@@ -166,8 +181,11 @@ function startWatching() {
         speed:     speed    || 0,
         accuracy,
         trip:      selTrip,
-        stopIndex: stopIndex,
+        stopIndex: routeStopIndex,
         updatedAt: Date.now(),
+      }).catch(err => {
+        document.getElementById('gpsVal').innerText =
+          '❌ Firebase error: ' + err.message;
       });
     },
     err => {
@@ -179,10 +197,11 @@ function startWatching() {
 }
 
 function startTracking() {
-  isTracking = true;
-  gpsBuffer  = [];
-  gpsCount   = 0;
-  stopIndex  = 0;
+  isTracking     = true;
+  isFirstFix     = true;
+  gpsBuffer      = [];
+  gpsCount       = 0;
+  routeStopIndex = 0;
 
   document.getElementById('bigCircle').classList.add('live');
   document.getElementById('ctext').innerText    = 'SHARING LIVE';
@@ -192,16 +211,25 @@ function startTracking() {
   document.getElementById('gpsCount').innerText = '0';
 
   requestWakeLock();
+
+  const database = getDb();
+  if (database) {
+    database.ref('liveLocation/' + selBus).onDisconnect().cancel();
+  }
+
   startWatching();
 }
 
 function stopTracking() {
   isTracking = false;
+  isFirstFix = true;
   gpsBuffer  = [];
   if (watchId) { navigator.geolocation.clearWatch(watchId); watchId = null; }
   if (wakeLock) { wakeLock.release(); wakeLock = null; }
   const database = getDb();
-  if (database) database.ref('liveLocation/' + selBus).remove();
+  if (database) {
+    database.ref('liveLocation/' + selBus + '/isActive').set(false);
+  }
   document.getElementById('bigCircle').classList.remove('live');
   document.getElementById('ctext').innerText    = 'TAP TO SHARE';
   document.getElementById('badge').classList.remove('live');
