@@ -1,56 +1,78 @@
+/* ============================================================
+   driver.js — Driver panel logic (native background GPS)
+   ============================================================ */
+
 let isTracking = false;
-let watchId    = null;
+let watchId    = null;   // Capacitor watcher id (string)
 let gpsCount   = 0;
 let selBus     = '';
 let selTrip    = '';
 let gpsBuffer  = [];
 let routeStopIndex = 0;
+let isFirstFix = true;
 
+// ── Clock ────────────────────────────────────────────────────
 setInterval(() => {
-  const n = new Date();
-  document.getElementById('clock').innerText =
-    String(n.getHours()).padStart(2,'0') + ':' +
-    String(n.getMinutes()).padStart(2,'0');
+  const clockEl = document.getElementById('clock');
+  if (clockEl) {
+    const n = new Date();
+    clockEl.innerText =
+      String(n.getHours()).padStart(2,'0') + ':' +
+      String(n.getMinutes()).padStart(2,'0');
+  }
 }, 1000);
 
-setInterval(() => {
-  if (isTracking && !watchId) startWatching();
-}, 3000);
-
+// ── Trip / Bus selection ────────────────────────────────────
 function onTripChange() {
-  selTrip = document.getElementById('tripSelect').value;
+  selTrip = document.getElementById('tripSelect')?.value || '';
   selBus  = '';
   if (isTracking) stopTracking();
+  
   const busSelect = document.getElementById('busSelect');
+  if (!busSelect) return;
+  
   busSelect.innerHTML = '<option value="">— Select your bus —</option>';
   if (!selTrip) return;
-  (SHIFT_BUSES[selTrip] || []).forEach(b => {
+  
+  ((typeof SHIFT_BUSES !== 'undefined' && SHIFT_BUSES[selTrip]) || []).forEach(b => {
     const opt = document.createElement('option');
     opt.value = b.id;
     opt.textContent = b.label;
     busSelect.appendChild(opt);
   });
-  document.getElementById('routeList').innerHTML =
-    '<p style="color:#888;font-size:0.85rem">Select your bus to see route</p>';
-  document.getElementById('nextStop').innerText  = '—';
-  document.getElementById('shareLink').innerText = 'Select a bus to generate link';
+  
+  if (document.getElementById('routeList')) {
+    document.getElementById('routeList').innerHTML =
+      '<p style="color:#888;font-size:0.85rem">Select your bus to see route</p>';
+  }
+  if (document.getElementById('nextStop')) document.getElementById('nextStop').innerText  = '—';
+  if (document.getElementById('shareLink')) document.getElementById('shareLink').innerText = 'Select a bus to generate link';
 }
 
 function onBusChange() {
-  selBus = document.getElementById('busSelect').value;
+  selBus = document.getElementById('busSelect')?.value || '';
   routeStopIndex = 0;
   if (!selBus || !selTrip) return;
-  const stops = ROUTE_STOPS[selBus] || [];
-  document.getElementById('nextStop').innerText = stops[stops.length - 1] || '—';
-  document.getElementById('routeList').innerHTML = stops.map((name, i) => `
-    <div class="rstop" id="stop-${i}">
-      <div class="sdot ${i === 0 ? 'cur' : ''}"></div>
-      <div class="sname">${name}</div>
-      <div class="sstatus ${i === 0 ? 'here' : ''}">${i === 0 ? '● Here' : 'Upcoming'}</div>
-    </div>
-  `).join('');
-  document.getElementById('shareLink').innerText =
-    `college-bus-tracker-alpha.vercel.app/index.html?bus=${selBus}`;
+  
+  const stops = (typeof ROUTE_STOPS !== 'undefined' && ROUTE_STOPS[selBus]) || [];
+  if (document.getElementById('nextStop')) {
+    document.getElementById('nextStop').innerText = stops[stops.length - 1] || '—';
+  }
+  
+  if (document.getElementById('routeList')) {
+    document.getElementById('routeList').innerHTML = stops.map((name, i) => `
+      <div class="rstop" id="stop-${i}">
+        <div class="sdot ${i === 0 ? 'cur' : ''}"></div>
+        <div class="sname">${name}</div>
+        <div class="sstatus ${i === 0 ? 'here' : ''}">${i === 0 ? '● Here' : 'Upcoming'}</div>
+      </div>
+    `).join('');
+  }
+  
+  if (document.getElementById('shareLink')) {
+    document.getElementById('shareLink').innerText =
+      `college-bus-tracker-alpha.vercel.app/index.html?bus=${selBus}`;
+  }
 }
 
 function toggleTracking() {
@@ -59,26 +81,7 @@ function toggleTracking() {
   isTracking ? stopTracking() : startTracking();
 }
 
-let wakeLock = null;
-async function requestWakeLock() {
-  try {
-    if (!('wakeLock' in navigator)) return;
-    if (wakeLock) return;
-    wakeLock = await navigator.wakeLock.request('screen');
-    wakeLock.addEventListener('release', async () => {
-      wakeLock = null;
-      if (isTracking) await requestWakeLock();
-    });
-  } catch (err) {}
-}
-
-document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState === 'visible' && isTracking) {
-    await requestWakeLock();
-    if (!watchId) startWatching();
-  }
-});
-
+// ── GPS smoothing ───────────────────────────────────────────
 function getSmoothedLocation(lat, lng) {
   gpsBuffer.push({ lat, lng });
   if (gpsBuffer.length > 2) gpsBuffer.shift();
@@ -100,102 +103,131 @@ function getDistance(lat1, lng1, lat2, lng2) {
 }
 
 function computeStopIndex(lat, lng) {
-  const stops = ROUTE_STOPS[selBus] || [];
+  const stops = (typeof ROUTE_STOPS !== 'undefined' && ROUTE_STOPS[selBus]) || [];
   if (!stops.length) return routeStopIndex;
-
-  // Find nearest stop from current position
   let nearestIdx  = routeStopIndex;
   let nearestDist = Infinity;
-
-  // Only look forward from current index — never go back
   for (let i = routeStopIndex; i < stops.length; i++) {
-    const coord = STOP_COORDS[stops[i]];
+    const coord = (typeof STOP_COORDS !== 'undefined') ? STOP_COORDS[stops[i]] : null;
     if (!coord) continue;
     const d = getDistance(lat, lng, coord.lat, coord.lng);
-    if (d < nearestDist) {
-      nearestDist = d;
-      nearestIdx  = i;
-    }
+    if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
   }
-
   return nearestIdx;
 }
 
 function getDb() {
-  if (typeof db !== 'undefined') return db;
+  if (typeof db !== 'undefined' && db) return db;
   try { return firebase.database(); } catch(e) { return null; }
 }
 
-let isFirstFix = true;
+// ── Shared position handler — called by native watcher ───────
+function handlePosition(location) {
+  const rawLat   = location.latitude;
+  const rawLng   = location.longitude;
+  const heading  = location.bearing  || 0;
+  const speed    = location.speed    || 0;
+  const accuracy = location.accuracy || 0;
 
-function startWatching() {
-  if (watchId) {
-    navigator.geolocation.clearWatch(watchId);
-    watchId = null;
+  const gpsValEl = document.getElementById('gpsVal');
+  if (gpsValEl) {
+    gpsValEl.innerText = accuracy > 100
+      ? '⚠️ GPS: ' + Math.round(accuracy) + 'm — Move outdoors'
+      : '✅ ' + Math.round(accuracy) + 'm — ' +
+        rawLat.toFixed(5) + ', ' + rawLng.toFixed(5) + ' 🔥';
   }
-  watchId = navigator.geolocation.watchPosition(
-    pos => {
-      const { latitude: rawLat, longitude: rawLng, heading, speed, accuracy } = pos.coords;
 
-      document.getElementById('gpsVal').innerText = accuracy > 100
-        ? '⚠️ GPS: ' + Math.round(accuracy) + 'm — Move outdoors'
-        : '✅ ' + Math.round(accuracy) + 'm — ' +
-          rawLat.toFixed(5) + ', ' + rawLng.toFixed(5);
+  gpsCount++;
+  if (document.getElementById('gpsCount')) {
+    document.getElementById('gpsCount').innerText = gpsCount;
+  }
 
-      gpsCount++;
-      document.getElementById('gpsCount').innerText = gpsCount;
+  const { lat, lng } = getSmoothedLocation(rawLat, rawLng);
 
-      const { lat, lng } = getSmoothedLocation(rawLat, rawLng);
+  if (isFirstFix) {
+    isFirstFix = false;
+    const stops = (typeof ROUTE_STOPS !== 'undefined' && ROUTE_STOPS[selBus]) || [];
+    let nearestIdx = 0, nearestDist = Infinity;
+    stops.forEach((name, i) => {
+      const coord = (typeof STOP_COORDS !== 'undefined') ? STOP_COORDS[name] : null;
+      if (!coord) return;
+      const d = getDistance(lat, lng, coord.lat, coord.lng);
+      if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
+    });
+    routeStopIndex = nearestIdx;
+    updateStopProgress(routeStopIndex);
+  } else {
+    const newIndex = computeStopIndex(lat, lng);
+    if (newIndex > routeStopIndex) routeStopIndex = newIndex;
+    updateStopProgress(routeStopIndex);
+  }
 
-      if (isFirstFix) {
-        isFirstFix = false;
-        // On first fix scan ALL stops to find nearest
-        const stops = ROUTE_STOPS[selBus] || [];
-        let nearestIdx = 0, nearestDist = Infinity;
-        stops.forEach((name, i) => {
-          const coord = STOP_COORDS[name];
-          if (!coord) return;
-          const d = getDistance(lat, lng, coord.lat, coord.lng);
-          if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
-        });
-        routeStopIndex = nearestIdx;
-        updateStopProgress(routeStopIndex);
-      } else {
-        // After first fix — only look forward
-        const newIndex = computeStopIndex(lat, lng);
-        if (newIndex > routeStopIndex) {
-          routeStopIndex = newIndex;
-        }
-        updateStopProgress(routeStopIndex);
-      }
+  const database = getDb();
+  if (!database) {
+    if (gpsValEl) gpsValEl.innerText = '❌ Firebase not ready';
+    return;
+  }
 
-      const database = getDb();
-      if (!database) {
-        document.getElementById('gpsVal').innerText = '❌ Firebase not ready';
-        return;
-      }
-
-      database.ref('liveLocation/' + selBus).set({
-        lat, lng,
-        heading:   heading  || 0,
-        speed:     speed    || 0,
-        accuracy,
-        trip:      selTrip,
-        stopIndex: routeStopIndex,
-        updatedAt: Date.now(),
-      }).catch(err => {
-        document.getElementById('gpsVal').innerText =
-          '❌ Firebase error: ' + err.message;
-      });
-    },
-    err => {
-      document.getElementById('gpsVal').innerText = 'GPS Error: ' + err.message;
-      watchId = null;
-    },
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
-  );
+  // Explicitly setting isActive: true so Student Panel stays ONLINE during calls
+  database.ref('liveLocation/' + selBus).set({
+    lat, lng,
+    heading, speed, accuracy,
+    trip:      selTrip,
+    stopIndex: routeStopIndex,
+    isActive:  true,
+    updatedAt: Date.now(),
+  }).catch(err => {
+    if (gpsValEl) gpsValEl.innerText = '❌ Firebase error: ' + err.message;
+  });
 }
 
+// ── Native background watcher ────────────────────────────────
+async function startWatching() {
+  if (watchId) return;
+
+  try {
+    const { BackgroundGeolocation } = window.Capacitor.Plugins;
+
+    watchId = await BackgroundGeolocation.addWatcher(
+      {
+        backgroundMessage: 'KLS GIT Bus Tracker is sharing your location',
+        backgroundTitle:   'Location sharing active',
+        requestPermissions: true,
+        stale: false,
+        distanceFilter: 5,   // metres — fires an update every 5m of movement
+      },
+      (location, error) => {
+        if (error) {
+          if (error.code === 'NOT_AUTHORIZED') {
+            if (confirm('Location access is required. Open Settings to allow "Always Allow" location?')) {
+              BackgroundGeolocation.openSettings();
+            }
+          } else {
+            const gpsValEl = document.getElementById('gpsVal');
+            if (gpsValEl) gpsValEl.innerText = 'GPS Error: ' + error.message;
+          }
+          return;
+        }
+        if (location) handlePosition(location);
+      }
+    );
+  } catch (err) {
+    const gpsValEl = document.getElementById('gpsVal');
+    if (gpsValEl) gpsValEl.innerText = 'GPS init error: ' + err.message;
+    watchId = null;
+  }
+}
+
+async function stopWatching() {
+  if (!watchId) return;
+  try {
+    const { BackgroundGeolocation } = window.Capacitor.Plugins;
+    await BackgroundGeolocation.removeWatcher({ id: watchId });
+  } catch (err) {}
+  watchId = null;
+}
+
+// ── Start / Stop tracking ────────────────────────────────────
 function startTracking() {
   isTracking     = true;
   isFirstFix     = true;
@@ -203,18 +235,17 @@ function startTracking() {
   gpsCount       = 0;
   routeStopIndex = 0;
 
-  document.getElementById('bigCircle').classList.add('live');
-  document.getElementById('ctext').innerText    = 'SHARING LIVE';
-  document.getElementById('badge').classList.add('live');
-  document.getElementById('bdot').classList.add('live');
-  document.getElementById('btext').innerText    = 'Location LIVE';
-  document.getElementById('gpsCount').innerText = '0';
-
-  requestWakeLock();
+  document.getElementById('bigCircle')?.classList.add('live');
+  if (document.getElementById('ctext')) document.getElementById('ctext').innerText = 'SHARING LIVE';
+  document.getElementById('badge')?.classList.add('live');
+  document.getElementById('bdot')?.classList.add('live');
+  if (document.getElementById('btext')) document.getElementById('btext').innerText = 'Location LIVE';
+  if (document.getElementById('gpsCount')) document.getElementById('gpsCount').innerText = '0';
 
   const database = getDb();
-  if (database) {
-    database.ref('liveLocation/' + selBus).onDisconnect().cancel();
+  if (database && selBus) {
+    // If phone disconnects network during call, set bus inactive on disconnect
+    database.ref('liveLocation/' + selBus + '/isActive').onDisconnect().set(false);
   }
 
   startWatching();
@@ -224,24 +255,27 @@ function stopTracking() {
   isTracking = false;
   isFirstFix = true;
   gpsBuffer  = [];
-  if (watchId) { navigator.geolocation.clearWatch(watchId); watchId = null; }
-  if (wakeLock) { wakeLock.release(); wakeLock = null; }
+
+  stopWatching();
+
   const database = getDb();
-  if (database) {
+  if (database && selBus) {
     database.ref('liveLocation/' + selBus + '/isActive').set(false);
   }
-  document.getElementById('bigCircle').classList.remove('live');
-  document.getElementById('ctext').innerText    = 'TAP TO SHARE';
-  document.getElementById('badge').classList.remove('live');
-  document.getElementById('bdot').classList.remove('live');
-  document.getElementById('btext').innerText    = 'Location OFF';
-  document.getElementById('gpsVal').innerText   = 'Not sharing';
-  document.getElementById('gpsCount').innerText = '0';
+
+  document.getElementById('bigCircle')?.classList.remove('live');
+  if (document.getElementById('ctext')) document.getElementById('ctext').innerText = 'TAP TO SHARE';
+  document.getElementById('badge')?.classList.remove('live');
+  document.getElementById('bdot')?.classList.remove('live');
+  if (document.getElementById('btext')) document.getElementById('btext').innerText = 'Location OFF';
+  if (document.getElementById('gpsVal')) document.getElementById('gpsVal').innerText = 'Not sharing';
+  if (document.getElementById('gpsCount')) document.getElementById('gpsCount').innerText = '0';
   gpsCount = 0;
 }
 
+// ── Route progress dots ──────────────────────────────────────
 function updateStopProgress(currentIndex) {
-  const stops = ROUTE_STOPS[selBus] || [];
+  const stops = (typeof ROUTE_STOPS !== 'undefined' && ROUTE_STOPS[selBus]) || [];
   stops.forEach((name, i) => {
     const dot    = document.querySelector(`#stop-${i} .sdot`);
     const status = document.querySelector(`#stop-${i} .sstatus`);

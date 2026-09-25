@@ -9,4 +9,3 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
-alert('Firebase ready: ' + (typeof db));

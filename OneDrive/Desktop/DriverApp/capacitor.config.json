@@ -1,5 +1,9 @@
 {
   "appId": "com.klsgit.driver",
   "appName": "KLS GIT Driver",
-  "webDir": "www"
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "allowNavigation": ["*.firebaseio.com", "*.googleapis.com"]
+  }
 }
